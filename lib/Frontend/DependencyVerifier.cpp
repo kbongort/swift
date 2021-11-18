@@ -416,6 +416,9 @@ bool DependencyVerifier::constructObligations(const SourceFile *SF,
       Obligations.insert({Obligation::Key::forProvides(key),
                           {key, Expectation::Kind::Provides}});
     } break;
+    case NodeKind::External: {
+      // Skip. Not sure we can verify external deps.
+    } break;
     }
   });
 

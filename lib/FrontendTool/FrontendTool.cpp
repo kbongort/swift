@@ -343,6 +343,8 @@ static void countASTStats(UnifiedStatsReporter &Stats,
       case NodeKind::UsedMember:
         C.NumReferencedMemberNames += 1;
         return;
+      case NodeKind::External:
+        return;
       }
     });
   }

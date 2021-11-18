@@ -100,6 +100,8 @@ DependencyKey::Builder DependencyKey::Builder::fromReference(
   case Kind::UsedMember:
     return Builder{kind, aspect, nullptr, ref.name.userFacingName()}
         .withContext(ref.subject->getAsDecl());
+  case Kind::External:
+    return Builder{kind, aspect, nullptr, ref.externalName};
   }
 }
 
@@ -506,6 +508,8 @@ private:
       return NodeKind::topLevel;
     case ReferenceKind::Dynamic:
       return NodeKind::dynamicLookup;
+    case ReferenceKind::External:
+      return NodeKind::externalDepend;
     case ReferenceKind::Empty:
       llvm_unreachable("Found invalid reference kind!");
     case ReferenceKind::Tombstone:
@@ -556,14 +560,12 @@ void FrontendSourceFileDepGraphFactory::addAllUsedDecls() {
   UsedDeclEnumerator(SF, swiftDeps)
       .enumerateAllUses(
           [&](const DependencyKey &def, const DependencyKey &use) {
-            addAUsedDecl(def, use);
+            if (def.getKind() == NodeKind::externalDepend) {
+              addAnExternalDependency(def, use, Optional<Fingerprint>());
+            } else {
+              addAUsedDecl(def, use);
+            }
           });
-  ExternalDependencyEnumerator(depTracker, swiftDeps)
-      .enumerateExternalUses([&](const DependencyKey &def,
-                                 const DependencyKey &use,
-                                 Optional<Fingerprint> maybeFP) {
-        addAnExternalDependency(def, use, maybeFP);
-      });
 }
 
 //==============================================================================

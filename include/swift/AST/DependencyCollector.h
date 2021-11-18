@@ -23,6 +23,7 @@
 
 namespace swift {
 
+class Decl;
 class DeclContext;
 
 namespace evaluator {
@@ -48,42 +49,51 @@ struct DependencyCollector {
       PotentialMember,
       TopLevel,
       Dynamic,
+      External,
     } kind;
 
     DeclContext *subject;
     DeclBaseName name;
+    llvm::StringRef externalName;
 
   private:
-    Reference(Kind kind, DeclContext *subject, DeclBaseName name)
-        : kind(kind), subject(subject), name(name) {}
+    Reference(Kind kind, DeclContext *subject, DeclBaseName name, llvm::StringRef externalName)
+        : kind(kind), subject(subject), name(name), externalName(externalName) {}
 
   public:
     static Reference empty() {
       return {Kind::Empty, llvm::DenseMapInfo<DeclContext *>::getEmptyKey(),
-              llvm::DenseMapInfo<DeclBaseName>::getEmptyKey()};
+              llvm::DenseMapInfo<DeclBaseName>::getEmptyKey(),
+              llvm::StringRef()
+      };
     }
 
     static Reference tombstone() {
       return {Kind::Tombstone,
               llvm::DenseMapInfo<DeclContext *>::getTombstoneKey(),
-              llvm::DenseMapInfo<DeclBaseName>::getTombstoneKey()};
+              llvm::DenseMapInfo<DeclBaseName>::getTombstoneKey(),
+              llvm::StringRef()};
     }
 
   public:
     static Reference usedMember(DeclContext *subject, DeclBaseName name) {
-      return {Kind::UsedMember, subject, name};
+      return {Kind::UsedMember, subject, name, llvm::StringRef()};
     }
 
     static Reference potentialMember(DeclContext *subject) {
-      return {Kind::PotentialMember, subject, DeclBaseName()};
+      return {Kind::PotentialMember, subject, DeclBaseName(), llvm::StringRef()};
     }
 
     static Reference topLevel(DeclBaseName name) {
-      return {Kind::TopLevel, nullptr, name};
+      return {Kind::TopLevel, nullptr, name, llvm::StringRef()};
     }
 
     static Reference dynamic(DeclBaseName name) {
-      return {Kind::Dynamic, nullptr, name};
+      return {Kind::Dynamic, nullptr, name, llvm::StringRef()};
+    }
+
+    static Reference external(llvm::StringRef externalName) {
+      return {Kind::External, nullptr, DeclBaseName(), externalName};
     }
 
   public:
@@ -94,11 +104,12 @@ struct DependencyCollector {
       }
       static inline unsigned getHashValue(const Reference &Val) {
         return llvm::hash_combine(Val.kind, Val.subject,
-                                  Val.name.getAsOpaquePointer());
+                                  Val.name.getAsOpaquePointer(),
+                                  Val.externalName);
       }
       static bool isEqual(const Reference &LHS, const Reference &RHS) {
         return LHS.kind == RHS.kind && LHS.subject == RHS.subject &&
-               LHS.name == RHS.name;
+               LHS.name == RHS.name && LHS.externalName == RHS.externalName;
       }
     };
   };
@@ -146,6 +157,8 @@ public:
   /// A dynamic lookup dependency is a special kind of member dependency on
   /// a name that is found by \c AnyObject lookup.
   void addDynamicLookupName(DeclBaseName name);
+
+  bool maybeAddImportedDecl(const Decl *decl);
 
 public:
   /// Retrieves the dependency recorder that created this dependency collector.

@@ -15,11 +15,14 @@
 //
 //===----------------------------------------------------------------------===//
 #include "swift/AST/Evaluator.h"
+#include "swift/AST/Decl.h"
 #include "swift/AST/DeclContext.h"
 #include "swift/AST/DiagnosticEngine.h"
 #include "swift/Basic/LangOptions.h"
 #include "swift/Basic/Range.h"
 #include "swift/Basic/SourceManager.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/AST/ASTContext.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/SaveAndRestore.h"
@@ -132,6 +135,40 @@ void evaluator::DependencyCollector::addDynamicLookupName(DeclBaseName name) {
   return parent.recordDependency(Reference::dynamic(name));
 }
 
+bool evaluator::DependencyCollector::maybeAddImportedDecl(const Decl *decl) {
+  if (const clang::Decl *clangDecl = decl->getClangDecl()) {
+    auto &clangAST = clangDecl->getASTContext();
+    auto &sourceManager = clangAST.getSourceManager();
+
+    auto fileId = sourceManager.getFileID(clangDecl->getLocation());
+    if (!fileId.isValid()) {
+      return false;
+    }
+    if (sourceManager.isInSystemHeader(clangDecl->getLocation())) {
+      return false;
+    }
+    llvm::StringRef filename = sourceManager.getFilename(clangDecl->getLocation());
+    if (filename.empty()) {
+      return false;
+    }
+    parent.recordDependency(Reference::external(filename));
+
+#if 0
+    // Record dependencies on the chain of headers that include the decl's location.
+    clang::SourceLocation includeLoc = sourceManager.getIncludeLoc(fileId);
+    while (includeLoc.isValid()) {
+      llvm::StringRef filename = sourceManager.getFilename(includeLoc);
+      if (!filename.empty() && filename != "<swift-imported-modules>") {
+        parent.recordDependency(Reference::external(filename));
+      }
+      includeLoc = sourceManager.getIncludeLoc(sourceManager.getFileID(includeLoc));
+    }
+#endif
+    return true;
+  }
+  return false;
+}
+
 void evaluator::DependencyRecorder::enumerateReferencesInFile(
     const SourceFile *SF, ReferenceEnumerator f) const {
   auto entry = fileReferences.find(SF);
@@ -148,6 +185,7 @@ void evaluator::DependencyRecorder::enumerateReferencesInFile(
     case DependencyCollector::Reference::Kind::PotentialMember:
     case DependencyCollector::Reference::Kind::TopLevel:
     case DependencyCollector::Reference::Kind::Dynamic:
+    case DependencyCollector::Reference::Kind::External:
       f(ref);
     }
   }

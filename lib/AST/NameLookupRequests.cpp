@@ -311,6 +311,8 @@ void DirectLookupRequest::writeDependencySink(
   // This gets us a dependency not just on `Foo.bar` but on `extension Foo.bar`.
   for (const auto *member : result) {
     tracker.addUsedMember(member->getDeclContext(), desc.Name.getBaseName());
+
+    tracker.maybeAddImportedDecl(member);
   }
   tracker.addUsedMember(desc.DC, desc.Name.getBaseName());
 }
@@ -329,6 +331,9 @@ void LookupInModuleRequest::writeDependencySink(
   // dependency information available.
   auto *module = DC->getParentModule();
   if (module->isMainModule() || module->hasIncrementalInfo()) {
+    for (auto decl : l) {
+      reqTracker.maybeAddImportedDecl(decl);
+    }
     reqTracker.addTopLevelName(member.getBaseName());
   }
 }
@@ -372,6 +377,9 @@ void ModuleQualifiedLookupRequest::writeDependencySink(
   // Decline to record lookups if the module in question has no incremental
   // dependency information available.
   if (module->isMainModule() || module->hasIncrementalInfo()) {
+    for (auto decl : l) {
+      reqTracker.maybeAddImportedDecl(decl);
+    }
     reqTracker.addTopLevelName(member.getBaseName());
   }
 }
@@ -409,6 +417,9 @@ void UnqualifiedLookupRequest::writeDependencySink(
     const LookupResult &res) const {
   auto &desc = std::get<0>(getStorage());
   track.addTopLevelName(desc.Name.getBaseName());
+  if (auto decl = res.getSingleTypeResult()) {
+    track.maybeAddImportedDecl(res.getSingleTypeResult());
+  }
 }
 
 // Define request evaluation functions for each of the name lookup requests.
